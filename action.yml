@@ -1,0 +1,58 @@
+name: tg-notify
+description: Одно обновляемое сообщение о CI/CD в Telegram, звук только при провале, сообщение о релизе с файлами
+author: qu1nqqy
+branding:
+  icon: send
+  color: blue
+
+inputs:
+  token:
+    description: Токен бота (секрет). Пустой — уведомление пропускается с предупреждением, задача не падает.
+    required: false
+    default: ''
+  chat_id:
+    description: id группы (секрет или переменная). Пустой — как с token.
+    required: false
+    default: ''
+  topic_id:
+    description: id темы (message_thread_id) в группе с темами. Необязательный.
+    required: false
+    default: ''
+  message_id:
+    description: Продолжить существующее сообщение (output message_id предыдущей задачи).
+    required: false
+    default: ''
+  mode:
+    description: "pipeline (по умолчанию) — статус шагов; release — новое закреплённое сообщение о релизе."
+    required: false
+    default: pipeline
+  files:
+    description: "Для release: glob файлов (можно несколько строк), до 50 МБ каждый."
+    required: false
+    default: ''
+  tag:
+    description: "Для release: тег релиза. По умолчанию — тег из ref или релиз, опубликованный этим запуском."
+    required: false
+    default: ''
+  notes:
+    description: "Для release: короткие заметки. По умолчанию — описание релиза на GitHub."
+    required: false
+    default: ''
+  poll_interval:
+    description: Период опроса API в секундах (не меньше 3).
+    required: false
+    default: '5'
+  github_token:
+    description: Токен для чтения шагов (нужно permissions actions read) и релизов.
+    required: false
+    default: ${{ github.token }}
+
+outputs:
+  message_id:
+    description: id сообщения в Telegram (для следующей задачи или сообщение о релизе в режиме release).
+
+runs:
+  using: node24
+  main: dist/index.js
+  post: dist/index.js
+  post-if: always()
