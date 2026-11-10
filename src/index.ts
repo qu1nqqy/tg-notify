@@ -53,6 +53,7 @@ async function main(): Promise<void> {
     threadId,
     messageId: int(core.getInput('message_id')),
     pollIntervalMs: interval * 1000,
+    title: core.getInput('title') || undefined,
   });
 }
 

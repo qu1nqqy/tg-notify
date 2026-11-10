@@ -5,7 +5,9 @@ import { Telegram, TelegramError } from '../src/telegram.js';
 describe('renderRelease', () => {
   it('тег, имя, заметки, экранирование', () => {
     const text = renderRelease({ repo: 'o/r', tag: 'v1.2.0', name: 'Зима <3', notes: '- fix a & b' }, 1024);
-    expect(text).toBe('🚀 <b>o/r</b> v1.2.0\nЗима &lt;3\n\n- fix a &amp; b');
+    expect(text).toBe(
+      '<b>🚀 Релиз</b> <code>v1.2.0</code>\n<b>Зима &lt;3</b>\n• Репозиторий: <code>o/r</code>\n\n<blockquote expandable>- fix a &amp; b</blockquote>',
+    );
   });
 
   it('укладывается в лимит подписи даже после экранирования', () => {

@@ -38,6 +38,10 @@ inputs:
     description: "Для release: короткие заметки. По умолчанию — описание релиза на GitHub."
     required: false
     default: ''
+  title:
+    description: "Заголовок: «✅ <title>: успешно». Например Проверка, Деплой или {workflow} — имя workflow."
+    required: false
+    default: Сборка
   poll_interval:
     description: Период опроса API в секундах (не меньше 3).
     required: false

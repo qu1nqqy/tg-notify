@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { resolveAuthors, resolveBranch, resolveLinks, type RunContext } from '../src/context.js';
+import { resolveAuthors, resolveBranch, resolveLinks, resolveTitle, type RunContext } from '../src/context.js';
 import { pickRelease, type Release } from '../src/github.js';
 import { findCurrentJob, ownStepName } from '../src/pipeline.js';
 import type { ApiJob } from '../src/types.js';
@@ -54,6 +54,7 @@ const ctx = (over: Partial<RunContext>): RunContext => ({
   headRef: '',
   actor: 'a',
   runnerName: 'r',
+  workflow: 'build',
   event: {},
   ...over,
 });
@@ -126,4 +127,10 @@ describe('ownStepName', () => {
   it('выполняющийся шаг', () => expect(ownStepName(withSteps([['Set up job', 'completed'], ['Run ./', 'in_progress']]))).toBe('Run ./'));
   it('API ещё не догнал: «Set up job» не считается своим', () =>
     expect(ownStepName(withSteps([['Set up job', 'in_progress'], ['Run ./', 'queued']]))).toBeUndefined());
+});
+
+describe('resolveTitle', () => {
+  it('пусто — по умолчанию', () => expect(resolveTitle('  ', 'ci')).toBeUndefined());
+  it('свой', () => expect(resolveTitle('Проверка', 'ci')).toBe('Проверка'));
+  it('{workflow}', () => expect(resolveTitle('{workflow}', 'build')).toBe('build'));
 });

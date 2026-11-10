@@ -116,24 +116,35 @@ export function formatDuration(sec: number): string {
   return h > 0 ? `${h}:${String(m).padStart(2, '0')}:${ss}` : `${m}:${ss}`;
 }
 
-const HEADERS: Record<Summary['state'], string> = {
-  running: '⏳ Запущена сборка…',
-  success: '✅ Сборка прошла',
-  failure: '❌ Сборка упала',
-  cancelled: '❌ Сборка отменена',
+/** Заголовок по умолчанию; меняется входом title. */
+export const DEFAULT_TITLE = 'Сборка';
+
+const STATE_WORDS: Record<Summary['state'], [string, string]> = {
+  running: ['⏳', 'выполняется'],
+  success: ['✅', 'успешно'],
+  failure: ['❌', 'ошибка'],
+  cancelled: ['❌', 'отменено'],
 };
+
+/** «✅ Сборка: успешно» — без согласования по роду, чтобы подходил любой title. */
+export function headerLine(title: string, state: Summary['state']): string {
+  const [icon, word] = STATE_WORDS[state];
+  return `<b>${icon} ${escapeHtml(title || DEFAULT_TITLE)}: ${word}</b>`;
+}
 
 function footer(summary: Summary): string | null {
   switch (summary.state) {
     case 'running':
       return null;
     case 'success':
-      return summary.durationSec === undefined ? '✅ Готово' : `✅ Готово за ${formatDuration(summary.durationSec)}`;
+      return summary.durationSec === undefined
+        ? '<b>✅ Готово</b>'
+        : `<b>✅ Готово за ${formatDuration(summary.durationSec)}</b>`;
     case 'cancelled':
-      return '❌ Отменено';
+      return '<b>❌ Отменено</b>';
     case 'failure': {
       const where = summary.failedStep ?? summary.failedJob ?? 'неизвестный шаг';
-      return `❌ Упало: ${escapeHtml(where)}`;
+      return `<b>❌ Упало:</b> <code>${escapeHtml(displayStep(where))}</code>`;
     }
   }
 }
@@ -153,35 +164,54 @@ function clip(s: string, max: number): string {
   return s.length > max ? `${s.slice(0, max - 1)}…` : s;
 }
 
-function renderJob(job: JobView, level: Compact): string[] {
+/** «Run npm test» → «npm test»: префикс GitHub по умолчанию только шумит. */
+export function displayStep(name: string): string {
+  return name.replace(/^Run\s+/, '');
+}
+
+/**
+ * Секция задачи: заголовок жирным, шаги в цитате. Завершённая успешная задача — в
+ * сворачиваемой цитате, чтобы не занимать место. plain — без цитат (для жёсткой обрезки
+ * по строкам, где многострочный тег нельзя разрывать).
+ */
+function renderJob(job: JobView, level: Compact, plain = false): string {
   const title = `📝 <b>${escapeHtml(level >= Compact.ShortNames ? clip(job.name, 60) : job.name)}</b>`;
-  if (job.steps.length === 0) return [`${title} ${job.mark}`];
-  if (level >= Compact.CollapseDone && job.mark === '✅') return [`${title} ✅ (шагов: ${job.steps.length})`];
-  const lines = [title];
+  if (job.steps.length === 0) return `${title} ${job.mark}`;
+  if (level >= Compact.CollapseDone && job.mark === '✅') return `${title} ✅ <i>(шагов: ${job.steps.length})</i>`;
+  const lines: string[] = [];
   let okHidden = 0;
   for (const s of job.steps) {
     if (level >= Compact.HideSuccess && s.mark === '✅') {
       okHidden++;
       continue;
     }
-    const name = level >= Compact.ShortNames ? clip(s.name, 40) : s.name;
-    lines.push(`${s.mark} ${escapeHtml(name)}`);
+    const name = displayStep(s.name);
+    lines.push(`${s.mark} ${escapeHtml(level >= Compact.ShortNames ? clip(name, 40) : name)}`);
   }
-  if (okHidden) lines.splice(1, 0, `✅ … успешных шагов: ${okHidden}`);
-  return lines;
+  if (okHidden) lines.unshift(`✅ <i>успешных шагов: ${okHidden}</i>`);
+  if (plain) return [title, ...lines].join('\n');
+  const open = job.mark === '✅' && lines.length > 3 ? '<blockquote expandable>' : '<blockquote>';
+  return `${title}\n${open}${lines.join('\n')}</blockquote>`;
 }
 
-function renderAt(meta: Meta, jobs: readonly JobView[], summary: Summary, level: Compact, withFooter = true): string {
+function renderAt(
+  meta: Meta,
+  jobs: readonly JobView[],
+  summary: Summary,
+  level: Compact,
+  opts: { footer?: boolean; plain?: boolean } = {},
+): string {
+  const code = (v: string) => `<code>${escapeHtml(v)}</code>`;
   const parts: string[] = [
     [
-      HEADERS[summary.state],
-      `• Репозиторий: ${escapeHtml(meta.repo)}`,
-      `• Ветка: ${escapeHtml(meta.branch)}`,
-      `• Автор: ${escapeHtml(meta.authors.join(', ') || '—')}`,
+      headerLine(meta.title ?? DEFAULT_TITLE, summary.state),
+      `• Репозиторий: ${code(meta.repo)}`,
+      `• Ветка: ${code(meta.branch)}`,
+      `• Автор: ${meta.authors.length ? meta.authors.map(code).join(', ') : '—'}`,
     ].join('\n'),
   ];
-  for (const job of jobs) parts.push(renderJob(job, level).join('\n'));
-  const end = withFooter ? footer(summary) : null;
+  for (const job of jobs) parts.push(renderJob(job, level, opts.plain));
+  const end = opts.footer === false ? null : footer(summary);
   if (end) parts.push(end);
   return parts.join('\n\n');
 }
@@ -210,7 +240,7 @@ export function renderMessage(meta: Meta, jobs: readonly JobView[], summary: Sum
     if (text.length <= limit) return text;
   }
   const end = footer(summary);
-  const body = renderAt(meta, jobs, summary, Compact.ShortNames, false);
+  const body = renderAt(meta, jobs, summary, Compact.ShortNames, { footer: false, plain: true });
   if (!end) return truncateLines(body, limit);
   return `${truncateLines(body, limit - end.length - 2)}\n\n${end}`;
 }
@@ -229,5 +259,5 @@ export function buildButtons(links: Links): Button[][] {
 /** Текст отдельного ответа со звуком при провале. */
 export function renderFailureReply(repo: string, summary: Summary): string {
   const where = summary.failedStep ?? summary.failedJob ?? 'неизвестный шаг';
-  return `❌ ${escapeHtml(repo)}: упало на ${escapeHtml(where)}`;
+  return `❌ <code>${escapeHtml(repo)}</code>: упало на <b>${escapeHtml(displayStep(where))}</b>`;
 }

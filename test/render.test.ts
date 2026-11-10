@@ -161,14 +161,14 @@ describe('renderMessage', () => {
     const text = renderMessage(meta, buildJobViews(jobs), summarize(jobs));
     expect(text).toBe(
       [
-        '⏳ Запущена сборка…',
-        '• Репозиторий: qu1nqqy/rustos',
-        '• Ветка: master',
-        '• Автор: alice, bob',
+        '<b>⏳ Сборка: выполняется</b>',
+        '• Репозиторий: <code>qu1nqqy/rustos</code>',
+        '• Ветка: <code>master</code>',
+        '• Автор: <code>alice</code>, <code>bob</code>',
         '',
         '📝 <b>test</b>',
-        '✅ fmt',
-        '⏳ clippy',
+        '<blockquote>✅ fmt',
+        '⏳ clippy</blockquote>',
         '',
         '📝 <b>release</b> ⏳',
       ].join('\n'),
@@ -177,12 +177,21 @@ describe('renderMessage', () => {
 
   it('итог при успехе и провале', () => {
     const ok = renderMessage(meta, [], { state: 'success', durationSec: 252 });
-    expect(ok.startsWith('✅ Сборка прошла')).toBe(true);
-    expect(ok.endsWith('✅ Готово за 4:12')).toBe(true);
+    expect(ok.startsWith('<b>✅ Сборка: успешно</b>')).toBe(true);
+    expect(ok.endsWith('<b>✅ Готово за 4:12</b>')).toBe(true);
 
-    const bad = renderMessage(meta, [], { state: 'failure', failedStep: 'cargo <clippy>' });
-    expect(bad.startsWith('❌ Сборка упала')).toBe(true);
-    expect(bad.endsWith('❌ Упало: cargo &lt;clippy&gt;')).toBe(true);
+    const bad = renderMessage(meta, [], { state: 'failure', failedStep: 'Run cargo <clippy>' });
+    expect(bad.startsWith('<b>❌ Сборка: ошибка</b>')).toBe(true);
+    expect(bad.endsWith('<b>❌ Упало:</b> <code>cargo &lt;clippy&gt;</code>')).toBe(true);
+
+    const cancelled = renderMessage({ ...meta, title: 'Деплой' }, [], { state: 'cancelled' });
+    expect(cancelled.startsWith('<b>❌ Деплой: отменено</b>')).toBe(true);
+  });
+
+  it('успешная задача с длинным списком — в сворачиваемой цитате, «Run » убран', () => {
+    const steps = ['Run a', 'Run b', 'c', 'd'].map((x) => step(x));
+    const text = renderMessage(meta, buildJobViews([job('build', steps, { status: 'completed', conclusion: 'success' })]), { state: 'running' });
+    expect(text).toContain('📝 <b>build</b>\n<blockquote expandable>✅ a\n✅ b\n✅ c\n✅ d</blockquote>');
   });
 
   it('экранирует имена задач, шагов и шапку', () => {
@@ -205,9 +214,10 @@ describe('renderMessage', () => {
     const summary = summarize(jobs, { currentJobId: 2, final: true });
     const text = renderMessage(meta, buildJobViews(jobs, { currentJobId: 2, final: true }), summary);
     expect(text.length).toBeLessThanOrEqual(TEXT_LIMIT);
-    expect(text).toContain('📝 <b>build</b> ✅ (шагов: 400)');
+    expect(text).toContain('📝 <b>build</b> ✅ <i>(шагов: 400)</i>');
     expect(text).toContain('❌ упавший шаг');
-    expect(text.endsWith('❌ Упало: упавший шаг')).toBe(true);
+    expect(text.endsWith('<b>❌ Упало:</b> <code>упавший шаг</code>')).toBe(true);
+    expect(text.split('<blockquote').length).toBe(text.split('</blockquote>').length);
   });
 
   it('жёсткая обрезка по строкам, если не помогло', () => {
@@ -215,6 +225,7 @@ describe('renderMessage', () => {
     const text = renderMessage(meta, buildJobViews(jobs), { state: 'running' });
     expect(text.length).toBeLessThanOrEqual(TEXT_LIMIT);
     expect(text.endsWith('\n…')).toBe(true);
+    expect(text).not.toContain('<blockquote'); // многострочный тег не разорван
   });
 });
 
@@ -252,7 +263,9 @@ describe('buildButtons', () => {
 
 describe('renderFailureReply', () => {
   it('репозиторий и шаг', () => {
-    expect(renderFailureReply('o/r', { state: 'failure', failedJob: 'test', failedStep: 'clippy' })).toBe('❌ o/r: упало на clippy');
-    expect(renderFailureReply('o/r', { state: 'failure', failedJob: 'test' })).toBe('❌ o/r: упало на test');
+    expect(renderFailureReply('o/r', { state: 'failure', failedJob: 'test', failedStep: 'Run clippy' })).toBe(
+      '❌ <code>o/r</code>: упало на <b>clippy</b>',
+    );
+    expect(renderFailureReply('o/r', { state: 'failure', failedJob: 'test' })).toBe('❌ <code>o/r</code>: упало на <b>test</b>');
   });
 });

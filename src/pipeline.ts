@@ -28,6 +28,8 @@ export interface PipelineConfig {
   currentJobId?: number;
   hiddenSteps: string[];
   pollIntervalMs: number;
+  /** Заголовок сообщения (вход title). */
+  title?: string;
 }
 
 export const POLLER_ENV = 'TG_NOTIFY_POLLER';
@@ -61,9 +63,15 @@ export interface Composed {
   summary: Summary;
 }
 
-export function compose(ctx: RunContext, jobs: readonly ApiJob[], view: ViewOptions, releaseUrl?: string, now?: number): Composed {
+export function compose(
+  ctx: RunContext,
+  jobs: readonly ApiJob[],
+  view: ViewOptions & { title?: string },
+  releaseUrl?: string,
+  now?: number,
+): Composed {
   const summary = summarize(jobs, view, now);
-  const text = renderMessage(resolveMeta(ctx), buildJobViews(jobs, view), summary);
+  const text = renderMessage(resolveMeta(ctx, view.title), buildJobViews(jobs, view), summary);
   return { text, buttons: buildButtons(resolveLinks(ctx, releaseUrl)), summary };
 }
 
@@ -92,7 +100,7 @@ export async function pipelineMain(base: Omit<PipelineConfig, 'messageId' | 'hid
     if (own) break;
   }
   const hiddenSteps = own ? [own] : [];
-  const view: ViewOptions = { currentJobId: current?.id, hiddenSteps };
+  const view = { currentJobId: current?.id, hiddenSteps, title: base.title };
   const { text, buttons } = compose(ctx, jobs, view);
 
   let messageId = base.messageId;
@@ -150,7 +158,7 @@ export async function pollerMain(): Promise<void> {
         log('задача завершена, выхожу');
         return;
       }
-      const { text, buttons } = compose(ctx, jobs, { currentJobId, hiddenSteps: cfg.hiddenSteps });
+      const { text, buttons } = compose(ctx, jobs, { currentJobId, hiddenSteps: cfg.hiddenSteps, title: cfg.title });
       const key = text + JSON.stringify(buttons);
       if (key !== last) {
         await tg.editMessageText(cfg.messageId, text, buttons);
@@ -226,7 +234,7 @@ export async function pipelinePost(secrets: Pick<PipelineConfig, 'token' | 'gith
     if (current && !pending) break;
     await sleep(2000);
   }
-  const view: ViewOptions = { currentJobId: current?.id, hiddenSteps: cfg.hiddenSteps, final: true };
+  const view = { currentJobId: current?.id, hiddenSteps: cfg.hiddenSteps, final: true, title: cfg.title };
 
   let releaseUrl: string | undefined;
   try {

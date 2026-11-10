@@ -35,6 +35,8 @@ export interface JobView {
 
 /** Шапка сообщения: репозиторий, ветка, авторы. */
 export interface Meta {
+  /** Заголовок: «Сборка», «Проверка», «Деплой»… */
+  title?: string;
   repo: string;
   branch: string;
   authors: string[];

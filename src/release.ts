@@ -35,12 +35,12 @@ export function shortNotes(notes: string, max: number): string {
 }
 
 export function renderRelease(r: ReleaseText, limit: number): string {
-  const head = [`🚀 <b>${escapeHtml(r.repo)}</b> ${escapeHtml(r.tag)}`];
-  if (r.name && r.name !== r.tag) head.push(escapeHtml(r.name));
+  const head = [`<b>🚀 Релиз</b> <code>${escapeHtml(r.tag)}</code>`, `• Репозиторий: <code>${escapeHtml(r.repo)}</code>`];
+  if (r.name && r.name !== r.tag) head.splice(1, 0, `<b>${escapeHtml(r.name)}</b>`);
   const tail: string[] = [];
   if (r.tooLarge?.length) tail.push(`⚠️ Больше 50 МБ, скачать в релизе: ${escapeHtml(r.tooLarge.join(', '))}`);
   const build = (max: number) => {
-    const notes = r.notes && max > 0 ? escapeHtml(shortNotes(r.notes, max)) : '';
+    const notes = r.notes && max > 0 ? `<blockquote expandable>${escapeHtml(shortNotes(r.notes, max))}</blockquote>` : '';
     return [head.join('\n'), notes, ...tail].filter(Boolean).join('\n\n');
   };
   // Экранирование удлиняет текст, поэтому подбираем длину заметок, а не режем готовый HTML.

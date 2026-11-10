@@ -17,6 +17,7 @@ export interface RunContext {
   headRef: string;
   actor: string;
   runnerName: string;
+  workflow: string;
   event: EventPayload;
 }
 
@@ -42,6 +43,7 @@ export function readContext(env: NodeJS.ProcessEnv = process.env): RunContext {
     headRef: env.GITHUB_HEAD_REF ?? '',
     actor: env.GITHUB_ACTOR ?? '',
     runnerName: env.RUNNER_NAME ?? '',
+    workflow: env.GITHUB_WORKFLOW ?? '',
     event,
   };
 }
@@ -83,8 +85,16 @@ export function resolveSha(ctx: Pick<RunContext, 'eventName' | 'event' | 'sha'>)
   return ctx.sha;
 }
 
-export function resolveMeta(ctx: RunContext): Meta {
+/** Заголовок из входа title; {workflow} заменяется именем workflow. */
+export function resolveTitle(template: string | undefined, workflow: string): string | undefined {
+  const t = template?.trim();
+  if (!t) return undefined;
+  return t.replace(/\{workflow\}/g, workflow).trim() || undefined;
+}
+
+export function resolveMeta(ctx: RunContext, title?: string): Meta {
   return {
+    title: resolveTitle(title, ctx.workflow),
     repo: ctx.repo,
     branch: resolveBranch(ctx),
     authors: resolveAuthors(ctx.eventName, ctx.event, ctx.actor),

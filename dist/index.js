@@ -28378,7 +28378,7 @@ module.exports = {
 /* harmony export */   aV: () => (/* binding */ resolveMeta),
 /* harmony export */   yI: () => (/* binding */ readContext)
 /* harmony export */ });
-/* unused harmony exports isPullRequest, resolveAuthors, resolveBranch, resolveSha */
+/* unused harmony exports isPullRequest, resolveAuthors, resolveBranch, resolveSha, resolveTitle */
 /* harmony import */ var node_fs__WEBPACK_IMPORTED_MODULE_0__ = __nccwpck_require__(3024);
 /* harmony import */ var node_fs__WEBPACK_IMPORTED_MODULE_0___default = /*#__PURE__*/__nccwpck_require__.n(node_fs__WEBPACK_IMPORTED_MODULE_0__);
 
@@ -28405,6 +28405,7 @@ function readContext(env = process.env) {
         headRef: env.GITHUB_HEAD_REF ?? '',
         actor: env.GITHUB_ACTOR ?? '',
         runnerName: env.RUNNER_NAME ?? '',
+        workflow: env.GITHUB_WORKFLOW ?? '',
         event,
     };
 }
@@ -28442,8 +28443,16 @@ function resolveSha(ctx) {
         return String(ctx.event.pull_request?.head?.sha ?? ctx.sha);
     return ctx.sha;
 }
-function resolveMeta(ctx) {
+/** Заголовок из входа title; {workflow} заменяется именем workflow. */
+function resolveTitle(template, workflow) {
+    const t = template?.trim();
+    if (!t)
+        return undefined;
+    return t.replace(/\{workflow\}/g, workflow).trim() || undefined;
+}
+function resolveMeta(ctx, title) {
     return {
+        title: resolveTitle(title, ctx.workflow),
         repo: ctx.repo,
         branch: resolveBranch(ctx),
         authors: resolveAuthors(ctx.eventName, ctx.event, ctx.actor),
@@ -28604,6 +28613,7 @@ async function main() {
         threadId,
         messageId: int(_actions_core__WEBPACK_IMPORTED_MODULE_0__/* .getInput */ .V4('message_id')),
         pollIntervalMs: interval * 1000,
+        title: _actions_core__WEBPACK_IMPORTED_MODULE_0__/* .getInput */ .V4('title') || undefined,
     });
 }
 async function post() {
@@ -28699,7 +28709,7 @@ function ownStepName(job) {
 }
 function compose(ctx, jobs, view, releaseUrl, now) {
     const summary = (0,render/* summarize */.eh)(jobs, view, now);
-    const text = (0,render/* renderMessage */.e4)((0,context/* resolveMeta */.aV)(ctx), (0,render/* buildJobViews */.wV)(jobs, view), summary);
+    const text = (0,render/* renderMessage */.e4)((0,context/* resolveMeta */.aV)(ctx, view.title), (0,render/* buildJobViews */.wV)(jobs, view), summary);
     return { text, buttons: (0,render/* buildButtons */.Af)((0,context/* resolveLinks */.Ap)(ctx, releaseUrl)), summary };
 }
 // ---------------------------------------------------------------- main
@@ -28728,7 +28738,7 @@ async function pipelineMain(base) {
             break;
     }
     const hiddenSteps = own ? [own] : [];
-    const view = { currentJobId: current?.id, hiddenSteps };
+    const view = { currentJobId: current?.id, hiddenSteps, title: base.title };
     const { text, buttons } = compose(ctx, jobs, view);
     let messageId = base.messageId;
     if (messageId) {
@@ -28783,7 +28793,7 @@ async function pollerMain() {
                 log('задача завершена, выхожу');
                 return;
             }
-            const { text, buttons } = compose(ctx, jobs, { currentJobId, hiddenSteps: cfg.hiddenSteps });
+            const { text, buttons } = compose(ctx, jobs, { currentJobId, hiddenSteps: cfg.hiddenSteps, title: cfg.title });
             const key = text + JSON.stringify(buttons);
             if (key !== last) {
                 await tg.editMessageText(cfg.messageId, text, buttons);
@@ -28862,7 +28872,7 @@ async function pipelinePost(secrets) {
             break;
         await sleep(2000);
     }
-    const view = { currentJobId: current?.id, hiddenSteps: cfg.hiddenSteps, final: true };
+    const view = { currentJobId: current?.id, hiddenSteps: cfg.hiddenSteps, final: true, title: cfg.title };
     let releaseUrl;
     try {
         const run = await gh.getRun(ctx.runId);
@@ -32471,14 +32481,14 @@ function shortNotes(notes, max) {
     return `${nl > max / 2 ? cut.slice(0, nl) : cut}…`;
 }
 function renderRelease(r, limit) {
-    const head = [`🚀 <b>${(0,render/* escapeHtml */.ZD)(r.repo)}</b> ${(0,render/* escapeHtml */.ZD)(r.tag)}`];
+    const head = [`<b>🚀 Релиз</b> <code>${(0,render/* escapeHtml */.ZD)(r.tag)}</code>`, `• Репозиторий: <code>${(0,render/* escapeHtml */.ZD)(r.repo)}</code>`];
     if (r.name && r.name !== r.tag)
-        head.push((0,render/* escapeHtml */.ZD)(r.name));
+        head.splice(1, 0, `<b>${(0,render/* escapeHtml */.ZD)(r.name)}</b>`);
     const tail = [];
     if (r.tooLarge?.length)
         tail.push(`⚠️ Больше 50 МБ, скачать в релизе: ${(0,render/* escapeHtml */.ZD)(r.tooLarge.join(', '))}`);
     const build = (max) => {
-        const notes = r.notes && max > 0 ? (0,render/* escapeHtml */.ZD)(shortNotes(r.notes, max)) : '';
+        const notes = r.notes && max > 0 ? `<blockquote expandable>${(0,render/* escapeHtml */.ZD)(shortNotes(r.notes, max))}</blockquote>` : '';
         return [head.join('\n'), notes, ...tail].filter(Boolean).join('\n\n');
     };
     // Экранирование удлиняет текст, поэтому подбираем длину заметок, а не режем готовый HTML.
@@ -32577,7 +32587,7 @@ async function releaseMain(inp) {
 /* harmony export */   eh: () => (/* binding */ summarize),
 /* harmony export */   wV: () => (/* binding */ buildJobViews)
 /* harmony export */ });
-/* unused harmony exports TEXT_LIMIT, isServiceStep, stepMark, formatDuration, Compact, truncateLines */
+/* unused harmony exports TEXT_LIMIT, isServiceStep, stepMark, formatDuration, DEFAULT_TITLE, headerLine, Compact, displayStep, truncateLines */
 /** Лимит текста сообщения в Telegram. */
 const TEXT_LIMIT = 4096;
 function escapeHtml(s) {
@@ -32685,23 +32695,32 @@ function formatDuration(sec) {
     const ss = String(s).padStart(2, '0');
     return h > 0 ? `${h}:${String(m).padStart(2, '0')}:${ss}` : `${m}:${ss}`;
 }
-const HEADERS = {
-    running: '⏳ Запущена сборка…',
-    success: '✅ Сборка прошла',
-    failure: '❌ Сборка упала',
-    cancelled: '❌ Сборка отменена',
+/** Заголовок по умолчанию; меняется входом title. */
+const DEFAULT_TITLE = 'Сборка';
+const STATE_WORDS = {
+    running: ['⏳', 'выполняется'],
+    success: ['✅', 'успешно'],
+    failure: ['❌', 'ошибка'],
+    cancelled: ['❌', 'отменено'],
 };
+/** «✅ Сборка: успешно» — без согласования по роду, чтобы подходил любой title. */
+function headerLine(title, state) {
+    const [icon, word] = STATE_WORDS[state];
+    return `<b>${icon} ${escapeHtml(title || DEFAULT_TITLE)}: ${word}</b>`;
+}
 function footer(summary) {
     switch (summary.state) {
         case 'running':
             return null;
         case 'success':
-            return summary.durationSec === undefined ? '✅ Готово' : `✅ Готово за ${formatDuration(summary.durationSec)}`;
+            return summary.durationSec === undefined
+                ? '<b>✅ Готово</b>'
+                : `<b>✅ Готово за ${formatDuration(summary.durationSec)}</b>`;
         case 'cancelled':
-            return '❌ Отменено';
+            return '<b>❌ Отменено</b>';
         case 'failure': {
             const where = summary.failedStep ?? summary.failedJob ?? 'неизвестный шаг';
-            return `❌ Упало: ${escapeHtml(where)}`;
+            return `<b>❌ Упало:</b> <code>${escapeHtml(displayStep(where))}</code>`;
         }
     }
 }
@@ -32719,38 +32738,51 @@ var Compact;
 function clip(s, max) {
     return s.length > max ? `${s.slice(0, max - 1)}…` : s;
 }
-function renderJob(job, level) {
+/** «Run npm test» → «npm test»: префикс GitHub по умолчанию только шумит. */
+function displayStep(name) {
+    return name.replace(/^Run\s+/, '');
+}
+/**
+ * Секция задачи: заголовок жирным, шаги в цитате. Завершённая успешная задача — в
+ * сворачиваемой цитате, чтобы не занимать место. plain — без цитат (для жёсткой обрезки
+ * по строкам, где многострочный тег нельзя разрывать).
+ */
+function renderJob(job, level, plain = false) {
     const title = `📝 <b>${escapeHtml(level >= Compact.ShortNames ? clip(job.name, 60) : job.name)}</b>`;
     if (job.steps.length === 0)
-        return [`${title} ${job.mark}`];
+        return `${title} ${job.mark}`;
     if (level >= Compact.CollapseDone && job.mark === '✅')
-        return [`${title} ✅ (шагов: ${job.steps.length})`];
-    const lines = [title];
+        return `${title} ✅ <i>(шагов: ${job.steps.length})</i>`;
+    const lines = [];
     let okHidden = 0;
     for (const s of job.steps) {
         if (level >= Compact.HideSuccess && s.mark === '✅') {
             okHidden++;
             continue;
         }
-        const name = level >= Compact.ShortNames ? clip(s.name, 40) : s.name;
-        lines.push(`${s.mark} ${escapeHtml(name)}`);
+        const name = displayStep(s.name);
+        lines.push(`${s.mark} ${escapeHtml(level >= Compact.ShortNames ? clip(name, 40) : name)}`);
     }
     if (okHidden)
-        lines.splice(1, 0, `✅ … успешных шагов: ${okHidden}`);
-    return lines;
+        lines.unshift(`✅ <i>успешных шагов: ${okHidden}</i>`);
+    if (plain)
+        return [title, ...lines].join('\n');
+    const open = job.mark === '✅' && lines.length > 3 ? '<blockquote expandable>' : '<blockquote>';
+    return `${title}\n${open}${lines.join('\n')}</blockquote>`;
 }
-function renderAt(meta, jobs, summary, level, withFooter = true) {
+function renderAt(meta, jobs, summary, level, opts = {}) {
+    const code = (v) => `<code>${escapeHtml(v)}</code>`;
     const parts = [
         [
-            HEADERS[summary.state],
-            `• Репозиторий: ${escapeHtml(meta.repo)}`,
-            `• Ветка: ${escapeHtml(meta.branch)}`,
-            `• Автор: ${escapeHtml(meta.authors.join(', ') || '—')}`,
+            headerLine(meta.title ?? DEFAULT_TITLE, summary.state),
+            `• Репозиторий: ${code(meta.repo)}`,
+            `• Ветка: ${code(meta.branch)}`,
+            `• Автор: ${meta.authors.length ? meta.authors.map(code).join(', ') : '—'}`,
         ].join('\n'),
     ];
     for (const job of jobs)
-        parts.push(renderJob(job, level).join('\n'));
-    const end = withFooter ? footer(summary) : null;
+        parts.push(renderJob(job, level, opts.plain));
+    const end = opts.footer === false ? null : footer(summary);
     if (end)
         parts.push(end);
     return parts.join('\n\n');
@@ -32781,7 +32813,7 @@ function renderMessage(meta, jobs, summary, limit = TEXT_LIMIT) {
             return text;
     }
     const end = footer(summary);
-    const body = renderAt(meta, jobs, summary, Compact.ShortNames, false);
+    const body = renderAt(meta, jobs, summary, Compact.ShortNames, { footer: false, plain: true });
     if (!end)
         return truncateLines(body, limit);
     return `${truncateLines(body, limit - end.length - 2)}\n\n${end}`;
@@ -32802,7 +32834,7 @@ function buildButtons(links) {
 /** Текст отдельного ответа со звуком при провале. */
 function renderFailureReply(repo, summary) {
     const where = summary.failedStep ?? summary.failedJob ?? 'неизвестный шаг';
-    return `❌ ${escapeHtml(repo)}: упало на ${escapeHtml(where)}`;
+    return `❌ <code>${escapeHtml(repo)}</code>: упало на <b>${escapeHtml(displayStep(where))}</b>`;
 }
 
 
