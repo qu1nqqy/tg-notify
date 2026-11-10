@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { resolveAuthors, resolveBranch, resolveLinks, type RunContext } from '../src/context.js';
 import { pickRelease, type Release } from '../src/github.js';
-import { findCurrentJob } from '../src/pipeline.js';
+import { findCurrentJob, ownStepName } from '../src/pipeline.js';
 import type { ApiJob } from '../src/types.js';
 
 describe('resolveAuthors', () => {
@@ -116,4 +116,14 @@ describe('findCurrentJob', () => {
   it('по раннеру', () => expect(findCurrentJob(jobs, 'GitHub Actions 1')?.id).toBe(2));
   it('по сохранённому id', () => expect(findCurrentJob(jobs, 'x', 1)?.id).toBe(1));
   it('не нашли', () => expect(findCurrentJob(jobs, '')).toBeUndefined());
+});
+
+describe('ownStepName', () => {
+  const withSteps = (steps: [string, string][]): ApiJob => ({
+    id: 1, name: 'j', status: 'in_progress', conclusion: null, started_at: null, completed_at: null, html_url: null, runner_name: 'r',
+    steps: steps.map(([name, status], i) => ({ name, status, conclusion: null, number: i + 1 })),
+  });
+  it('выполняющийся шаг', () => expect(ownStepName(withSteps([['Set up job', 'completed'], ['Run ./', 'in_progress']]))).toBe('Run ./'));
+  it('API ещё не догнал: «Set up job» не считается своим', () =>
+    expect(ownStepName(withSteps([['Set up job', 'in_progress'], ['Run ./', 'queued']]))).toBeUndefined());
 });
