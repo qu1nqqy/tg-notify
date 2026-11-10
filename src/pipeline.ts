@@ -50,6 +50,11 @@ export function findCurrentJob(jobs: readonly ApiJob[], runnerName: string, know
   return jobs.filter((j) => j.runner_name === runnerName && j.status === 'in_progress').at(-1);
 }
 
+/** Шаг, который выполняется сейчас (это шаг tg-notify), кроме «Set up job». */
+export function ownStepName(job: ApiJob | undefined): string | undefined {
+  return job?.steps?.find((s) => s.status === 'in_progress' && !/^set up job$/i.test(s.name.trim()))?.name;
+}
+
 export interface Composed {
   text: string;
   buttons: Button[][];
@@ -70,15 +75,23 @@ export async function pipelineMain(base: Omit<PipelineConfig, 'messageId' | 'hid
   const gh = github(base, ctx);
 
   let jobs: ApiJob[] = [];
-  try {
-    jobs = await gh.listJobs(ctx.runId, ctx.runAttempt);
-  } catch (e) {
-    core.warning(`tg-notify: не удалось получить шаги задачи, статус шагов не будет обновляться. ${(e as Error).message}`);
+  let current: ApiJob | undefined;
+  let own: string | undefined;
+  // Наш шаг сейчас выполняется: прячем его, даже если у него своё имя. API отдаёт статус
+  // с задержкой (может ещё значиться «Set up job»), поэтому несколько коротких повторов.
+  for (let attempt = 0; attempt < 4; attempt++) {
+    if (attempt) await sleep(1000);
+    try {
+      jobs = await gh.listJobs(ctx.runId, ctx.runAttempt);
+    } catch (e) {
+      core.warning(`tg-notify: не удалось получить шаги задачи, статус шагов не будет обновляться. ${(e as Error).message}`);
+      break;
+    }
+    current = findCurrentJob(jobs, ctx.runnerName);
+    own = ownStepName(current);
+    if (own) break;
   }
-  const current = findCurrentJob(jobs, ctx.runnerName);
-  // Наш собственный шаг сейчас выполняется: прячем его, даже если у него своё имя.
-  const own = current?.steps?.find((s) => s.status === 'in_progress');
-  const hiddenSteps = own ? [own.name] : [];
+  const hiddenSteps = own ? [own] : [];
   const view: ViewOptions = { currentJobId: current?.id, hiddenSteps };
   const { text, buttons } = compose(ctx, jobs, view);
 

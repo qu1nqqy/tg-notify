@@ -28647,7 +28647,7 @@ __nccwpck_require__.d(__webpack_exports__, {
   GF: () => (/* binding */ pollerMain)
 });
 
-// UNUSED EXPORTS: POLLER_ENV, compose, findCurrentJob
+// UNUSED EXPORTS: POLLER_ENV, compose, findCurrentJob, ownStepName
 
 ;// CONCATENATED MODULE: external "node:child_process"
 const external_node_child_process_namespaceObject = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("node:child_process");
@@ -28693,6 +28693,10 @@ function findCurrentJob(jobs, runnerName, knownId) {
         return undefined;
     return jobs.filter((j) => j.runner_name === runnerName && j.status === 'in_progress').at(-1);
 }
+/** Шаг, который выполняется сейчас (это шаг tg-notify), кроме «Set up job». */
+function ownStepName(job) {
+    return job?.steps?.find((s) => s.status === 'in_progress' && !/^set up job$/i.test(s.name.trim()))?.name;
+}
 function compose(ctx, jobs, view, releaseUrl, now) {
     const summary = (0,render/* summarize */.eh)(jobs, view, now);
     const text = (0,render/* renderMessage */.e4)((0,context/* resolveMeta */.aV)(ctx), (0,render/* buildJobViews */.wV)(jobs, view), summary);
@@ -28704,16 +28708,26 @@ async function pipelineMain(base) {
     const tg = pipeline_telegram(base);
     const gh = pipeline_github(base, ctx);
     let jobs = [];
-    try {
-        jobs = await gh.listJobs(ctx.runId, ctx.runAttempt);
+    let current;
+    let own;
+    // Наш шаг сейчас выполняется: прячем его, даже если у него своё имя. API отдаёт статус
+    // с задержкой (может ещё значиться «Set up job»), поэтому несколько коротких повторов.
+    for (let attempt = 0; attempt < 4; attempt++) {
+        if (attempt)
+            await sleep(1000);
+        try {
+            jobs = await gh.listJobs(ctx.runId, ctx.runAttempt);
+        }
+        catch (e) {
+            core/* warning */.$e(`tg-notify: не удалось получить шаги задачи, статус шагов не будет обновляться. ${e.message}`);
+            break;
+        }
+        current = findCurrentJob(jobs, ctx.runnerName);
+        own = ownStepName(current);
+        if (own)
+            break;
     }
-    catch (e) {
-        core/* warning */.$e(`tg-notify: не удалось получить шаги задачи, статус шагов не будет обновляться. ${e.message}`);
-    }
-    const current = findCurrentJob(jobs, ctx.runnerName);
-    // Наш собственный шаг сейчас выполняется: прячем его, даже если у него своё имя.
-    const own = current?.steps?.find((s) => s.status === 'in_progress');
-    const hiddenSteps = own ? [own.name] : [];
+    const hiddenSteps = own ? [own] : [];
     const view = { currentJobId: current?.id, hiddenSteps };
     const { text, buttons } = compose(ctx, jobs, view);
     let messageId = base.messageId;
