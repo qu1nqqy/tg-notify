@@ -1,0 +1,27 @@
+{
+  "name": "tg-notify",
+  "version": "1.0.0",
+  "private": true,
+  "description": "GitHub Action: одно обновляемое сообщение о CI/CD в Telegram",
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "build": "ncc build src/index.ts -o dist --license licenses.txt",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "all": "npm run typecheck && npm test && npm run build"
+  },
+  "dependencies": {
+    "@actions/core": "^3.0.1",
+    "@actions/glob": "^0.7.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.2",
+    "@vercel/ncc": "^0.45.0",
+    "typescript": "^5.9.3",
+    "vitest": "^5.1.0"
+  }
+}
